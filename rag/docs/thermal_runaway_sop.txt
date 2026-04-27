@@ -1,0 +1,48 @@
+THERMAL RUNAWAY INCIDENT RESPONSE — STANDARD OPERATING PROCEDURE
+SOP-BAT-TR-001 | Revision 4 | Effective: 2024-01-01
+
+SCOPE: This SOP applies to all battery energy storage systems (BESS) in the monitored fleet.
+
+TRIGGER CONDITIONS (any one of the following):
+- Risk Score exceeds 80 (CRITICAL tier)
+- Temperature rate of change > 2°C/min for 3 consecutive readings
+- SOH drops > 5% within a single monitoring window
+- Voltage variance (10-min rolling) exceeds 0.05V²
+- Battery anomaly detector flags the asset
+
+PHASE 1 — IMMEDIATE RESPONSE (0–5 minutes)
+Step 1.1: Verify alert is not a sensor fault
+  - Cross-check with adjacent assets in same rack
+  - If isolated to single asset, proceed to Step 1.2
+Step 1.2: Isolate the affected asset
+  - Disconnect load via remote relay command (Cyber MCP: quarantine_asset)
+  - Flag for maintenance via Battery MCP: flag_for_maintenance(priority="critical")
+Step 1.3: Notify stakeholders
+  - Alert asset owner (email + SMS)
+  - Notify security team if cyber co-occurrence detected
+  - Log event via Governance MCP: write_audit_log
+
+PHASE 2 — INVESTIGATION (5–30 minutes)
+Step 2.1: Retrieve LIME explanation for the triggering alert
+  - Review top contributing features (auth_failure_burst_rate, temp_rate_of_change)
+  - Check for concurrent network anomalies (lateral_move_indicator)
+Step 2.2: Check physical inspection queue
+  - Schedule on-site inspection if temperature >50°C sustained >15 minutes
+Step 2.3: Review recent history (last 24 hours)
+  - Identify patterns: charging cycles, load spikes, ambient temperature changes
+
+PHASE 3 — RESOLUTION
+Option A — Remote Reset (risk score 60-80, no physical anomaly)
+  - Reduce load by 50%, monitor for 30 minutes
+  - If risk score drops below 40 within 30 min, return to normal operation
+Option B — Physical Inspection Required (risk score >80 or temp > 50°C)
+  - Dispatch maintenance team
+  - Do not restore operation until physical clearance received
+Option C — Emergency Decommission (thermal runaway confirmed)
+  - Full isolation protocol (see Emergency Procedures in OEM manual)
+  - Post-incident report required within 48 hours
+
+DOCUMENTATION REQUIREMENTS:
+- All actions logged with timestamp and operator ID
+- LIME explanation attached to incident report
+- Root cause classification: hardware / software / cyber / unknown

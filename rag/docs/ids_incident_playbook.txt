@@ -1,0 +1,77 @@
+IDS INCIDENT PLAYBOOK — NETWORK INTRUSION RESPONSE
+Playbook Version 2.1 | Security Operations Center (SOC)
+
+SCOPE: Response procedures for network intrusion events detected by the ML-based
+attack classifier and zero-day autoencoder in the Cyber-Battery Intelligence Platform.
+
+ATTACK TYPE PLAYBOOKS:
+
+═══ PORT SCAN (threat_type: portscan) ═══
+Severity: INVESTIGATE (typical) → URGENT (if auth_failures follow within 60 min)
+
+Detection Signature:
+- CIC-IDS2017 PortScan label or ML classifier confidence > 0.80
+- packet_entropy elevated (typically 2.5–4.0 bits)
+- lateral_move_indicator = 0 (reconnaissance only, no lateral movement yet)
+
+Immediate Actions:
+1. Log source IP and target port range
+2. Check if source IP is in known-bad IP list
+3. If scan targets ports 502/102/4840 (ICS protocols): escalate to URGENT immediately
+4. Enable enhanced logging on targeted assets for 2 hours
+5. Set 60-minute correlation window for subsequent auth failures from same source
+
+Escalation Trigger: Any auth failure from the scanning IP within 60 minutes of scan
+
+═══ DENIAL OF SERVICE (threat_type: dos / ddos) ═══
+Severity: URGENT → CRITICAL depending on duration and battery impact
+
+Detection Signature:
+- High flow duration with high packet count
+- auth_failure_burst_rate may be elevated if volumetric attack includes credential stuffing
+- battery_drain_during_alert may increase (monitoring load increased)
+
+Immediate Actions:
+1. Enable rate limiting on monitoring API endpoints
+2. Identify attack source (single IP = DoS, distributed = DDoS)
+3. For DDoS: activate upstream filtering / contact ISP within 15 minutes
+4. Verify battery telemetry channels are operating independently
+5. If dashboard unavailable: switch to SMS/email alert channels
+
+Recovery: Verify all battery assets resume normal monitoring after attack subsides
+
+═══ BRUTE FORCE (threat_type: bruteforce) ═══
+Severity: URGENT (active) → CRITICAL (if successful login detected)
+
+Detection Signature:
+- auth_failure_burst_rate > 10 failures in 5-minute window
+- lateral_move_indicator = 1 (multiple target assets)
+- Typically follows portscan event
+
+Immediate Actions:
+1. Immediately lock accounts with > 5 failed attempts
+2. Block source IP for 24 hours via Cyber MCP: block_ip()
+3. Alert account owners via out-of-band channel
+4. Check audit logs for any successful logins in last 30 minutes
+5. If successful login detected: treat as Active Breach (Critical)
+
+═══ ZERO-DAY (threat_type: unknown, zero_day_detector flag) ═══
+Severity: CRITICAL (always)
+
+Detection Signature:
+- Autoencoder reconstruction error > 95th percentile threshold
+- ML classifier low confidence (<0.50) on any known class
+- No matching CVE pattern
+
+Immediate Actions:
+1. Immediately isolate affected network segment (requires human approval)
+2. Capture full packet trace for 10 minutes
+3. Escalate to tier-3 security analyst immediately
+4. Do NOT attempt automated remediation — unknown attack vector
+5. Preserve all logs: integrity-stamp with governance MCP hash
+
+POST-INCIDENT:
+All incidents require:
+- Root cause analysis within 72 hours
+- Update of FAISS knowledge index with new incident details
+- Retrain attack classifier with new labeled samples if zero-day confirmed

@@ -1,0 +1,43 @@
+BATTERY OEM SAFETY MANUAL — LITHIUM-ION PRISMATIC CELLS
+Version 3.2 | Classification: Internal Use
+
+1. THERMAL MANAGEMENT
+Lithium-ion cells operate safely between -20°C and 60°C. Sustained operation above 45°C accelerates electrolyte decomposition and SEI layer growth, reducing State of Health (SOH) by approximately 2-4% per 100 cycles at elevated temperatures.
+
+Thermal Runaway Precursors:
+- Temperature rate of change exceeding 2°C/min without load increase
+- Voltage drop below 3.0V under normal load conditions
+- Swelling or case deformation (physical inspection required)
+- Electrolyte venting (detectable as increase in ambient humidity near cell)
+
+Thermal Runaway Cascade Sequence:
+Stage 1 (70-90°C): Electrolyte decomposition begins, gas generation starts
+Stage 2 (90-120°C): SEI layer breakdown, lithium metal deposition
+Stage 3 (120-150°C): Separator melting, internal short circuit
+Stage 4 (>150°C): Thermal runaway propagation, fire or explosion risk
+
+2. STATE OF HEALTH (SOH) THRESHOLDS
+- SOH > 80%: Normal operation, standard monitoring
+- SOH 60-80%: Degraded, increase monitoring frequency to 5-minute intervals
+- SOH 40-60%: Critical degradation, schedule replacement within 30 days
+- SOH < 40%: Immediate decommission, do not operate under load
+
+3. STATE OF CHARGE (SOC) MANAGEMENT
+Optimal long-term SOC range: 20-80%
+Deep discharge (<10% SOC) causes copper dissolution from anode current collector.
+Sustained overcharge (>95% SOC) accelerates lithium plating.
+
+4. REMAINING USEFUL LIFE (RUL) ESTIMATION
+RUL is calculated from cycle count, depth of discharge history, and temperature exposure.
+Battery approaching end-of-life shows:
+- Increased internal resistance (voltage sag under load >150mV)
+- Reduced capacity retention (<80% of nominal)
+- Elevated self-discharge rate (>3% per day at room temperature)
+
+5. EMERGENCY PROCEDURES
+If thermal runaway detected:
+1. Immediately disconnect load and charging source
+2. Do NOT use water — use Class D extinguisher or dry sand
+3. Evacuate area within 10 meters
+4. Contact safety team: thermal events can reignite hours after initial suppression
+5. Document: asset_id, timestamp, last SOH reading, ambient temperature

@@ -1,0 +1,60 @@
+CYBER-PHYSICAL FUSION THREAT INTELLIGENCE GUIDE
+Research Reference | Cyber-Battery Intelligence Platform
+
+OVERVIEW OF CYBER-PHYSICAL ATTACK PATTERNS ON BATTERY SYSTEMS
+
+1. SUPPLY CHAIN ATTACK → BATTERY DEGRADATION
+Attack Pattern: Adversary compromises BMS firmware during manufacturing or update process.
+Modified firmware alters charge/discharge parameters beyond safe limits.
+Observable Indicators:
+- SOH degradation rate 3x faster than expected cycle profile
+- Voltage variance anomaly not correlated with load changes
+- Firmware version mismatch detected during boot
+Cross-Domain Correlation: Firmware update events (cyber log) → accelerated SOH drop (battery)
+Detection: Battery anomaly detector (IsolationForest) + zero-day autoencoder on firmware traffic
+
+2. MAN-IN-THE-MIDDLE → FALSE TELEMETRY INJECTION
+Attack Pattern: Adversary intercepts battery monitoring channel, injects false readings.
+Masquerades degraded battery as healthy to delay maintenance.
+Observable Indicators:
+- Sensor readings statistically inconsistent (voltage stable while temp varies unusually)
+- LIME explanation shows voltage_variance_10m has negative contribution to risk
+  (suppressed variance is suspicious, not reassuring)
+- Physical inspection reveals actual temperature > reported temperature
+Cross-Domain Correlation: Network anomaly (packet_entropy spike) → suspicious telemetry smoothness
+Detection: Fusion feature: cross_domain_risk_delta divergence
+
+3. COORDINATED PORTSCAN → BMS EXPLOIT → THERMAL INCIDENT
+Attack Pattern (documented in CVE-2024-21762):
+T+0min: Network reconnaissance (portscan detected)
+T+15-30min: Targeted exploitation of BMS management port
+T+30-45min: Unauthorized parameter change (overcharge threshold modified)
+T+45-90min: Accelerated battery degradation → potential thermal event
+Cross-Domain Correlation: heat_spike_post_scan feature captures this exact pattern
+Detection: fusion feature heat_spike_post_scan=1 with preceding portscan event
+
+4. INSIDER THREAT — DELIBERATE PARAMETER TAMPERING
+Attack Pattern: Authorized user modifies charging profiles to degrade specific battery assets.
+Observable Indicators:
+- Parameter changes not correlated with maintenance schedule
+- auth_failures = 0 (legitimate credentials used)
+- SOH drop following parameter change event
+- lateral_move_indicator may be 0 (no lateral movement, targeted)
+Detection: Governance MCP audit log correlation + SOH trend anomaly
+
+FUSION RISK SCORING INTERPRETATION:
+The platform computes a weighted fusion risk score:
+  Score = 0.35 × battery_risk + 0.35 × threat_score + 0.20 × fusion_context + 0.10 × temporal_trend
+
+High battery_risk + High threat_score = strong indicator of coordinated cyber-physical attack
+High threat_score alone = cyber-only incident (network attack without battery impact)
+High battery_risk alone = physical degradation (aging, environmental, operational)
+High fusion_context (cross_domain_risk_delta) = escalating multi-domain incident
+
+RECOMMENDED INVESTIGATOR CHECKLIST FOR FUSION ALERTS (risk > 60):
+□ Review LIME explanation — what are the top contributing features?
+□ Check if battery anomaly and network anomaly timestamps overlap
+□ Review heat_spike_post_scan and battery_drain_during_alert values
+□ Cross-reference with CVE advisories for matching attack patterns
+□ Verify physical sensor integrity (rule out false positive)
+□ Check audit log for recent parameter changes on affected asset
