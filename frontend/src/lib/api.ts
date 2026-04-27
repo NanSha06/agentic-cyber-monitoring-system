@@ -38,6 +38,26 @@ export interface Explanation {
   human_readable: string;
 }
 
+export interface CopilotMessage {
+  role:    "user" | "assistant";
+  content: string;
+}
+
+export interface CopilotResponse {
+  response:          string;
+  sources:           string[];
+  suggested_actions: string[];
+  intent:            string;
+  context_count:     number;
+  timestamp:         string;
+}
+
+export interface CopilotStatus {
+  faiss_index_ready: boolean;
+  gemini_key_set:    boolean;
+  ready:             boolean;
+}
+
 async function fetchJSON<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
@@ -60,6 +80,22 @@ export const api = {
 
   // Explanations
   getExplanation: (alertId: string) => fetchJSON<Explanation>(`/explain/${alertId}`),
+
+  // Copilot (V2)
+  copilotChat: (body: {
+    message: string;
+    history: CopilotMessage[];
+    asset_context?: Record<string, unknown> | null;
+    session_id?: string;
+  }) => fetchJSON<CopilotResponse>("/copilot/chat", {
+    method: "POST",
+    body:   JSON.stringify(body),
+  }),
+  copilotStatus:   () => fetchJSON<CopilotStatus>("/copilot/status"),
+  suggestedPrompts: (assetId?: string) =>
+    fetchJSON<{ prompts: string[] }>(
+      `/copilot/suggested-prompts${assetId ? `?asset_id=${assetId}` : ""}`
+    ),
 
   // Health
   health: () => fetchJSON<any>("/health/"),

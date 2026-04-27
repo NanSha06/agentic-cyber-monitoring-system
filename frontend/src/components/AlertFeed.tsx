@@ -1,6 +1,6 @@
 "use client";
 import { Alert } from "@/lib/api";
-import { AlertTriangle, ShieldAlert, Info } from "lucide-react";
+import { AlertTriangle, ShieldAlert, Info, Bot } from "lucide-react";
 import Link from "next/link";
 
 interface Props { alerts: Alert[] }
@@ -49,12 +49,19 @@ export function AlertFeed({ alerts }: Props) {
               <span className="text-xs text-gray-500 flex-shrink-0">{timeAgo(a.timestamp)}</span>
             </div>
             <div className="text-xs text-gray-400 mt-0.5 truncate">{a.threat_type} · Score {a.risk_score}</div>
-            {a.explanation_available && (
-              <Link href={`/explain/${a.alert_id}`}
-                    className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors">
-                View explanation →
+            <div className="flex items-center gap-2 mt-1">
+              {a.explanation_available && (
+                <Link href={`/explain/${a.alert_id}`}
+                      className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors">
+                  View explanation →
+                </Link>
+              )}
+              <Link
+                href={`/copilot?asset=${a.asset_id}&risk=${a.risk_score}&threat=${a.threat_type}`}
+                className="flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300 transition-colors">
+                <Bot className="w-2.5 h-2.5" /> Ask AI
               </Link>
-            )}
+            </div>
           </div>
         </div>
       ))}
