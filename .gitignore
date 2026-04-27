@@ -1,4 +1,47 @@
+# ── Secrets ──────────────────────────────────────────────────
+.env
+
+# ── Python ───────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+
+# ── Node ─────────────────────────────────────────────────────
+node_modules/
+.next/
+out/
+frontend/.env*.local
+
+# ── Data ─────────────────────────────────────────────────────
+datasets/raw/*.zip
+datasets/processed/
+rag/index/
+audit_logs/
+
+# ── ML Models (large binaries) ───────────────────────────────
+models/battery/*.joblib
+models/battery/*.keras
+models/cyber/*.joblib
+models/cyber/*.keras
+models/fusion/*.joblib
+gan/timegan/checkpoints/
+gan/ctgan/checkpoints/
+
+# ── OS ───────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+cap_final.code-workspace
+
+# --- files ---------------------------------------------------
 *.zip
+*.csv
 data/
 datasets/
 cicids/
