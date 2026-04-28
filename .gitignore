@@ -44,4 +44,5 @@ cap_final.code-workspace
 *.csv
 data/
 datasets/
-cicids/
+cicids/backend-server.err.log
+*.log
