@@ -31,16 +31,17 @@ def classify_intent(message: str) -> str:
 
 class ConversationalChain:
     def __init__(self):
-        import google.generativeai as genai
         from rag.retrieval.retriever import KnowledgeRetriever, retriever_available
         from rag.chains.prompts import build_sop_prompt, GENERAL_QUERY_PROMPT
 
         api_key = os.environ.get("GEMINI_API_KEY", "")
-        if not api_key:
-            raise EnvironmentError("GEMINI_API_KEY not set")
-
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel("gemini-1.5-flash")
+        self.model = None
+        self.gemini_configured = bool(api_key)
+        self.last_generation_error: str | None = None
+        if api_key:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel("gemini-1.5-flash")
         self._build_sop_prompt = build_sop_prompt
         self._general_prompt   = GENERAL_QUERY_PROMPT
 
@@ -118,15 +119,41 @@ class ConversationalChain:
         }
 
     def _call_gemini(self, prompt: str) -> str:
+        if self.model is None:
+            return self._fallback_response(prompt)
+
         for attempt in range(3):
             try:
+                self.last_generation_error = None
                 return self.model.generate_content(prompt).text
             except Exception as e:
+                self.last_generation_error = str(e)
                 if "429" in str(e):
                     time.sleep(2 ** attempt)
                 else:
                     break
-        return "⚠️ AI assistant temporarily unavailable. Please try again in a moment."
+        return self._fallback_response(prompt)
+
+    def _fallback_response(self, prompt: str) -> str:
+        if self.gemini_configured:
+            reason = "Gemini generation is temporarily unavailable"
+            if self.last_generation_error and self._is_invalid_api_key_error(self.last_generation_error):
+                reason = "Gemini generation is unavailable because the configured API key was rejected"
+            return (
+                f"{reason}. I am using local RAG fallback mode with the available knowledge index. "
+                "Use the retrieved sources for SOP review, compare top contributors against recent "
+                "telemetry, and escalate CRITICAL assets before automated containment."
+            )
+
+        return (
+            "Gemini generation is not configured, so I am using local RAG fallback mode with the "
+            "available knowledge index. Use the retrieved sources for SOP review, compare top "
+            "contributors against recent telemetry, and escalate CRITICAL assets before automated containment."
+        )
+
+    def _is_invalid_api_key_error(self, error: str) -> bool:
+        low = error.lower()
+        return "api_key_invalid" in low or "api key not found" in low or "invalid api key" in low
 
     def _suggest_actions(self, asset_context: dict) -> list[str]:
         tier = asset_context.get("risk_tier", "")

@@ -38,6 +38,14 @@ export interface Explanation {
   human_readable: string;
 }
 
+export interface AssetHistoryPoint {
+  timestamp: string;
+  voltage: number;
+  temp: number;
+  soc: number;
+  current: number;
+}
+
 export interface CopilotMessage {
   role:    "user" | "assistant";
   content: string;
@@ -71,12 +79,12 @@ export const api = {
   // Assets
   getAssets: ()                => fetchJSON<Asset[]>("/assets/"),
   getAsset:  (id: string)      => fetchJSON<Asset>(`/assets/${id}`),
-  getHistory: (id: string, h = 24) => fetchJSON<{asset_id: string; history: any[]}>(`/assets/${id}/history?hours=${h}`),
+  getHistory: (id: string, h = 24) => fetchJSON<{ asset_id: string; history: AssetHistoryPoint[] }>(`/assets/${id}/history?hours=${h}`),
 
   // Alerts
   getAlerts:  (resolved = false) => fetchJSON<Alert[]>(`/alerts/?resolved=${resolved}`),
   getAlert:   (id: string)       => fetchJSON<Alert>(`/alerts/${id}`),
-  resolveAlert: (id: string)     => fetchJSON<any>(`/alerts/${id}/resolve`, { method: "POST" }),
+  resolveAlert: (id: string)     => fetchJSON<{ status: string; alert_id: string }>(`/alerts/${id}/resolve`, { method: "POST" }),
 
   // Explanations
   getExplanation: (alertId: string) => fetchJSON<Explanation>(`/explain/${alertId}`),
@@ -98,5 +106,5 @@ export const api = {
     ),
 
   // Health
-  health: () => fetchJSON<any>("/health/"),
+  health: () => fetchJSON<{ status: string; timestamp: string; version: string }>("/health/"),
 };

@@ -23,7 +23,9 @@ export function RiskGauge({ assetId, location, score, tier, soh }: Props) {
   const offset = circ - (score / 100) * circ;
 
   return (
-    <div className={`${cfg.bg} ring-1 ${cfg.ring} rounded-xl p-3 flex flex-col items-center gap-1
+    <div
+      aria-label={`${assetId} risk ${Math.round(score)} ${tier}`}
+      className={`${cfg.bg} ring-1 ${cfg.ring} rounded-xl p-3 flex flex-col items-center gap-1
                      shadow-lg ${cfg.glow} hover:scale-105 transition-transform duration-200 cursor-pointer`}>
       {/* SVG Arc */}
       <svg width="72" height="72" viewBox="0 0 72 72">

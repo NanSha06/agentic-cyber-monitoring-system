@@ -1,8 +1,9 @@
 "use client";
-import { useState, useRef, useEffect, useCallback } from "react";
+import { Suspense, useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { api, CopilotMessage, CopilotResponse } from "@/lib/api";
 import Link from "next/link";
-import { ArrowLeft, Send, Bot, User, Loader2, BookOpen, Zap, AlertTriangle } from "lucide-react";
+import { useSearchParams } from "next/navigation";
+import { ArrowLeft, Send, Bot, User, Loader2, BookOpen, Zap, Copy } from "lucide-react";
 
 interface Message {
   id:        string;
@@ -31,7 +32,7 @@ function TypingIndicator() {
   );
 }
 
-export default function CopilotPage() {
+function CopilotPageContent() {
   const [messages, setMessages]     = useState<Message[]>([]);
   const [input, setInput]           = useState("");
   const [loading, setLoading]       = useState(false);
@@ -39,7 +40,34 @@ export default function CopilotPage() {
   const [statusReady, setStatusReady] = useState<boolean | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef  = useRef<HTMLInputElement>(null);
-  const sessionId = useRef(`session-${Date.now()}`);
+  const searchParams = useSearchParams();
+  const assetContext = useMemo<Record<string, unknown> | null>(() => {
+    const assetId = searchParams.get("asset");
+    if (!assetId) return null;
+
+    const riskScore = Number(searchParams.get("risk") ?? 0);
+    const threatType = searchParams.get("threat") ?? "unknown";
+    const tier =
+      riskScore > 80 ? "CRITICAL" :
+      riskScore > 60 ? "URGENT" :
+      riskScore > 30 ? "INVESTIGATE" : "NOMINAL";
+
+    return {
+      asset_id: assetId,
+      risk_score: riskScore,
+      risk_tier: tier,
+      threat_type: threatType,
+    };
+  }, [searchParams]);
+  const sessionId = searchParams.get("session") ?? "default";
+  const visibleSuggestions = assetContext
+    ? [
+        `Why is ${String(assetContext.asset_id)} risky, and what should I do first?`,
+        `What SOP applies to ${String(assetContext.asset_id)}?`,
+        "What are the top 3 mitigation actions?",
+        ...suggestions,
+      ].slice(0, 4)
+    : suggestions;
 
   // Scroll to bottom on new message
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [messages]);
@@ -68,7 +96,8 @@ export default function CopilotPage() {
       const res: CopilotResponse = await api.copilotChat({
         message:    text,
         history,
-        session_id: sessionId.current,
+        asset_context: assetContext,
+        session_id: sessionId,
       });
 
       const assistantMsg: Message = {
@@ -91,7 +120,7 @@ export default function CopilotPage() {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [loading, messages]);
+  }, [assetContext, loading, messages, sessionId]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(input); }
@@ -136,9 +165,14 @@ export default function CopilotPage() {
                 Ask about any asset, alert, or operational procedure.<br />
                 Powered by Gemini 1.5 Flash + FAISS knowledge retrieval.
               </p>
+              {assetContext && (
+                <div className="mt-3 inline-flex items-center gap-2 rounded-full border border-indigo-800/50 bg-indigo-950/30 px-3 py-1 text-xs text-indigo-300">
+                  Context loaded: {String(assetContext.asset_id)}
+                </div>
+              )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-2xl mx-auto">
-              {suggestions.map((s, i) => (
+              {visibleSuggestions.map((s, i) => (
                 <button key={i} onClick={() => sendMessage(s)}
                         className="text-left text-sm bg-gray-900 border border-gray-800 rounded-xl px-4 py-3
                                    text-gray-300 hover:border-indigo-700 hover:text-white transition-all duration-150">
@@ -185,6 +219,14 @@ export default function CopilotPage() {
                     </span>
                   ))}
                 </div>
+              )}
+
+              {msg.role === "assistant" && !msg.loading && msg.content && (
+                <button
+                  onClick={() => navigator.clipboard?.writeText(msg.content)}
+                  className="flex items-center gap-1 text-[10px] text-gray-600 hover:text-gray-300 transition-colors">
+                  <Copy className="w-3 h-3" /> Copy response
+                </button>
               )}
 
               {/* Suggested actions */}
@@ -242,5 +284,18 @@ export default function CopilotPage() {
         </p>
       </div>
     </main>
+  );
+}
+
+export default function CopilotPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-gray-950 text-white flex items-center justify-center text-sm text-gray-500">
+          Loading copilot...
+        </main>
+      }>
+      <CopilotPageContent />
+    </Suspense>
   );
 }

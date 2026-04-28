@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { api, Asset, Alert } from "@/lib/api";
+import { api, Asset, Alert, AssetHistoryPoint } from "@/lib/api";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Battery, Thermometer, Zap, Shield } from "lucide-react";
@@ -31,7 +31,7 @@ const KPI_VALUE_CLS: Record<string, string> = {
 };
 
 // Mock history when backend is offline
-function mockHistory(hours = 6) {
+function mockHistory(hours = 6): AssetHistoryPoint[] {
   const points = hours * 6;
   return Array.from({ length: points }, (_, i) => ({
     timestamp: new Date(Date.now() - (points - i) * 600_000).toISOString(),
@@ -46,7 +46,7 @@ export default function AssetDetail() {
   const params   = useParams();
   const assetId  = params.id as string;
   const [asset, setAsset]     = useState<Asset | null>(null);
-  const [history, setHistory] = useState<Record<string, unknown>[]>([]);
+  const [history, setHistory] = useState<AssetHistoryPoint[]>([]);
   const [alerts, setAlerts]   = useState<Alert[]>([]);
 
   useEffect(() => {
@@ -56,8 +56,8 @@ export default function AssetDetail() {
       api.getAlerts(false),
     ]).then(([a, h, al]) => {
       setAsset(a);
-      setHistory((h.history as Record<string, unknown>[]).slice(-60));
-      setAlerts((al as Alert[]).filter((x) => x.asset_id === assetId));
+      setHistory(h.history.slice(-60));
+      setAlerts(al.filter((x) => x.asset_id === assetId));
     }).catch(() => {
       // Offline fallback
       setAsset({

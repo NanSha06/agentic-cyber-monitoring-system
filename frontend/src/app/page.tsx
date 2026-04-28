@@ -6,7 +6,7 @@ import { RiskGauge } from "@/components/RiskGauge";
 import { AlertFeed } from "@/components/AlertFeed";
 import { ThreatHeatmap } from "@/components/ThreatHeatmap";
 import { AssetTable } from "@/components/AssetTable";
-import { Shield, Wifi, WifiOff, Activity } from "lucide-react";
+import { Shield, Wifi, WifiOff, Activity, Bot, Database, ArrowRight } from "lucide-react";
 import Link from "next/link";
 
 // ── Mock data shown when the backend is offline ───────────────────────────────
@@ -41,13 +41,14 @@ const MOCK_ALERTS: Alert[] = Array.from({ length: 8 }, (_, i) => ({
 }));
 
 // ── Static colour maps (prevents Tailwind from purging dynamic class strings) ─
-const KPI_VALUE_CLS:  Record<string,string> = { indigo:"text-indigo-400", red:"text-red-400", orange:"text-orange-400", yellow:"text-yellow-400" };
+const KPI_VALUE_CLS:  Record<string,string> = { indigo:"text-indigo-400", red:"text-red-400", orange:"text-orange-400", yellow:"text-yellow-400", green:"text-green-400" };
 
 export default function CommandCenter() {
   const [assets, setAssets]   = useState<Asset[]>([]);
   const [alerts, setAlerts]   = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
   const [offline, setOffline] = useState(false);
+  const [copilotReady, setCopilotReady] = useState<boolean | null>(null);
   const { updates, connected } = useRiskStream();
 
   useEffect(() => {
@@ -59,6 +60,10 @@ export default function CommandCenter() {
         setOffline(true);
         setLoading(false);
       });
+
+    api.copilotStatus()
+      .then((status) => setCopilotReady(status.ready))
+      .catch(() => setCopilotReady(false));
   }, []);
 
   const liveAssets = assets.map((a) => {
@@ -77,6 +82,7 @@ export default function CommandCenter() {
     { label: "Critical Assets", value: critical,           color: "red"    },
     { label: "Urgent Assets",   value: urgent,             color: "orange" },
     { label: "Avg Risk Score",  value: `${avgRisk}/100`,  color: "yellow" },
+    { label: "RAG Copilot",     value: copilotReady ? "Ready" : "Setup", color: copilotReady ? "green" : "orange" },
   ];
 
   return (
@@ -89,10 +95,11 @@ export default function CommandCenter() {
             <span className="text-lg font-bold tracking-tight">
               Cyber<span className="text-indigo-400">Battery</span> Intelligence
             </span>
-            <span className="text-xs text-gray-500 border border-gray-700 px-2 py-0.5 rounded-full">V1</span>
+            <span className="text-xs text-gray-500 border border-gray-700 px-2 py-0.5 rounded-full">V2</span>
           </div>
           <div className="flex items-center gap-6 text-sm">
             <span className="font-semibold text-indigo-300">Command Center</span>
+            <Link href="/copilot" className="text-gray-400 hover:text-white transition-colors">AI Copilot</Link>
             <Link href="/assets" className="text-gray-400 hover:text-white transition-colors">Assets</Link>
             <Link href="/explain/demo" className="text-gray-400 hover:text-white transition-colors">Explain</Link>
             <div className={`flex items-center gap-1.5 text-xs px-2 py-1 rounded-full ${
@@ -115,7 +122,7 @@ export default function CommandCenter() {
 
       <div className="max-w-screen-2xl mx-auto px-6 py-8 space-y-8">
         {/* ── KPI Bar ── */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           {kpis.map(({ label, value, color }) => (
             <div key={label} className="bg-gray-900 border border-gray-800 rounded-2xl p-5">
               <div className="text-xs text-gray-500 uppercase tracking-widest mb-1">{label}</div>
@@ -123,6 +130,36 @@ export default function CommandCenter() {
             </div>
           ))}
         </div>
+
+        <section className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
+          <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-xl bg-indigo-900/50 border border-indigo-800/50 flex items-center justify-center flex-shrink-0">
+                <Bot className="w-6 h-6 text-indigo-300" />
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold text-white">AI Copilot with RAG</h2>
+                <p className="text-sm text-gray-400 mt-1 max-w-2xl">
+                  Ask operational questions grounded in the local playbooks, OEM notes, CVE advisories, and incident procedures.
+                </p>
+                <div className="mt-3 flex items-center gap-2 text-xs text-gray-500">
+                  <Database className="w-3.5 h-3.5" />
+                  {copilotReady === null
+                    ? "Checking retrieval index..."
+                    : copilotReady
+                      ? "FAISS index and Gemini key are available"
+                      : "Copilot backend is reachable, but the retrieval index or Gemini key is not ready"}
+                </div>
+              </div>
+            </div>
+            <Link
+              href="/copilot"
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-3 text-sm font-medium text-white hover:bg-indigo-500 transition-colors"
+            >
+              Open Copilot <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </section>
 
         {/* ── Risk Gauges ── */}
         <section>

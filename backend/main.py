@@ -13,10 +13,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Load .env before anything else
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env")
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 import structlog
 
 from backend.routers import assets, predictions, alerts, explanations, health
@@ -52,13 +53,18 @@ app.include_router(copilot.router)     # ← V2: AI Copilot
 app.include_router(ws_router)
 
 
+@app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse(url="/docs")
+
+
 @app.on_event("startup")
 async def startup():
     log.info("platform_startup", version="2.0.0", env="development")
-    print("🛡️  Cyber-Battery Platform API v2.0 started")
-    print("   API docs  → http://localhost:8000/docs")
-    print("   Copilot   → POST /copilot/chat")
-    print("   Status    → GET  /copilot/status")
+    print("Cyber-Battery Platform API v2.0 started")
+    print("   API docs  -> http://localhost:8000/docs")
+    print("   Copilot   -> POST /copilot/chat")
+    print("   Status    -> GET  /copilot/status")
 
 
 @app.on_event("shutdown")

@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/copilot", tags=["copilot"])
 
@@ -43,7 +43,7 @@ class ChatMessage(BaseModel):
 
 class CopilotRequest(BaseModel):
     message:       str
-    history:       list[ChatMessage] = []
+    history:       list[ChatMessage] = Field(default_factory=list)
     asset_context: dict | None = None
     session_id:    str = "default"
 
@@ -69,7 +69,7 @@ def _get_chain():
         except Exception as e:
             raise HTTPException(
                 status_code=503,
-                detail=f"Copilot not available: {e}. Ensure GEMINI_API_KEY is set and FAISS index is built."
+                detail=f"Copilot not available: {e}. Ensure dependencies are installed and the FAISS index is built."
             )
     return _chain
 

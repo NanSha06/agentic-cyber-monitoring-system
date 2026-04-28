@@ -23,16 +23,17 @@ def _cache_key(alert: dict, lime: dict) -> str:
 
 class AlertRAGChain:
     def __init__(self):
-        import google.generativeai as genai
         from rag.retrieval.retriever import KnowledgeRetriever, retriever_available
         from rag.chains.prompts import build_alert_prompt
 
         api_key = os.environ.get("GEMINI_API_KEY", "")
-        if not api_key:
-            raise EnvironmentError("GEMINI_API_KEY not set in environment")
-
-        genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel("gemini-1.5-flash")
+        self.model = None
+        self.gemini_configured = bool(api_key)
+        self.last_generation_error: str | None = None
+        if api_key:
+            import google.generativeai as genai
+            genai.configure(api_key=api_key)
+            self.model = genai.GenerativeModel("gemini-1.5-flash")
         self._build_alert_prompt = build_alert_prompt
 
         # Load retriever if index exists, else operate in Gemini-only mode
@@ -92,11 +93,16 @@ class AlertRAGChain:
 
     def _call_gemini_with_retry(self, prompt: str, max_retries: int = 3) -> str:
         """Call Gemini with exponential backoff. Returns fallback text if all retries fail."""
+        if self.model is None:
+            return self._fallback_answer()
+
         for attempt in range(max_retries):
             try:
+                self.last_generation_error = None
                 response = self.model.generate_content(prompt)
                 return response.text
             except Exception as e:
+                self.last_generation_error = str(e)
                 err = str(e)
                 if "429" in err or "quota" in err.lower():
                     wait = 2 ** attempt
@@ -105,11 +111,30 @@ class AlertRAGChain:
                 else:
                     print(f"  ⚠️  Gemini error: {e}")
                     break
+        return self._fallback_answer()
+
+    def _fallback_answer(self) -> str:
+        if self.gemini_configured:
+            reason = "Gemini generation is temporarily unavailable"
+            if self.last_generation_error and self._is_invalid_api_key_error(self.last_generation_error):
+                reason = "Gemini generation is unavailable because the configured API key was rejected"
+            return (
+                f"{reason}. I am using local alert fallback mode. Review the top LIME contributors "
+                "to identify whether the risk is battery-driven, cyber-driven, or cross-domain. "
+                "Recommended next steps: verify recent battery telemetry, inspect matching network "
+                "alerts, and follow the relevant SOP before taking containment action."
+            )
+
         return (
-            "⚠️ Gemini API unavailable. Based on LIME feature contributions, "
-            "the primary risk drivers are shown in the explanation panel. "
-            "Please consult the SOP documentation for manual investigation steps."
+            "Gemini generation is not configured, so I am using local alert fallback mode. Review "
+            "the top LIME contributors to identify whether the risk is battery-driven, cyber-driven, "
+            "or cross-domain. Recommended next steps: verify recent battery telemetry, inspect "
+            "matching network alerts, and follow the relevant SOP before taking containment action."
         )
+
+    def _is_invalid_api_key_error(self, error: str) -> bool:
+        low = error.lower()
+        return "api_key_invalid" in low or "api key not found" in low or "invalid api key" in low
 
     def _persist_cache(self, key: str, alert: dict, result: dict):
         try:
