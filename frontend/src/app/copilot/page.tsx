@@ -47,16 +47,20 @@ function CopilotPageContent() {
 
     const riskScore = Number(searchParams.get("risk") ?? 0);
     const threatType = searchParams.get("threat") ?? "unknown";
+    const alertId = searchParams.get("alert");
+    const description = searchParams.get("description");
     const tier =
       riskScore > 80 ? "CRITICAL" :
       riskScore > 60 ? "URGENT" :
       riskScore > 30 ? "INVESTIGATE" : "NOMINAL";
 
     return {
+      alert_id: alertId,
       asset_id: assetId,
       risk_score: riskScore,
       risk_tier: tier,
       threat_type: threatType,
+      description,
     };
   }, [searchParams]);
   const sessionId = searchParams.get("session") ?? "default";
@@ -74,9 +78,9 @@ function CopilotPageContent() {
 
   // Load initial suggestions and status
   useEffect(() => {
-    api.suggestedPrompts().then(r => setSuggestions(r.prompts)).catch(() => {});
+    api.suggestedPrompts(searchParams.get("asset") ?? undefined).then(r => setSuggestions(r.prompts)).catch(() => {});
     api.copilotStatus().then(s => setStatusReady(s.ready)).catch(() => setStatusReady(false));
-  }, []);
+  }, [searchParams]);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || loading) return;

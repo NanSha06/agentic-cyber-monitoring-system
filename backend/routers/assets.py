@@ -3,45 +3,13 @@ backend/routers/assets.py
 Asset management endpoints — fleet listing and individual asset detail.
 """
 from __future__ import annotations
-import uuid
 import random
 from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+from backend.services.demo_data import ASSET_STORE
 
 router = APIRouter(prefix="/assets", tags=["assets"])
-
-# ── Mock asset store (replace with DB in production) ─────────────────────────
-def _mock_assets() -> list[dict]:
-    assets = []
-    for i in range(1, 13):
-        risk = random.uniform(5, 95)
-        assets.append({
-            "asset_id":   f"BATTERY-{i:03d}",
-            "location":   f"Tower-{i}",
-            "soh":        round(random.uniform(60, 100), 1),
-            "soc":        round(random.uniform(20, 100), 1),
-            "temp":       round(random.uniform(18, 45), 1),
-            "voltage":    round(random.uniform(3.2, 4.2), 2),
-            "risk_score": round(risk, 1),
-            "risk_tier":  _tier(risk),
-            "rul_cycles": random.randint(50, 800),
-            "threat_type": random.choice(["normal", "normal", "normal", "portscan", "dos"]),
-            "last_seen":  datetime.now(timezone.utc).isoformat(),
-            "status":     "online",
-        })
-    return assets
-
-
-def _tier(score: float) -> str:
-    if score <= 30:  return "NOMINAL"
-    if score <= 60:  return "INVESTIGATE"
-    if score <= 80:  return "URGENT"
-    return "CRITICAL"
-
-
-# Seed once at import time
-_ASSET_STORE: list[dict] = _mock_assets()
 
 
 class Asset(BaseModel):
@@ -62,12 +30,12 @@ class Asset(BaseModel):
 @router.get("/", response_model=list[Asset])
 async def list_assets():
     """Return all monitored assets."""
-    return _ASSET_STORE
+    return ASSET_STORE
 
 
 @router.get("/{asset_id}", response_model=Asset)
 async def get_asset(asset_id: str):
-    for a in _ASSET_STORE:
+    for a in ASSET_STORE:
         if a["asset_id"] == asset_id:
             return a
     raise HTTPException(status_code=404, detail=f"Asset {asset_id} not found")

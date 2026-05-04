@@ -39,32 +39,41 @@ export function AlertFeed({ alerts }: Props) {
 
   return (
     <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
-      {active.map((a) => (
-        <div key={a.alert_id}
-             className={`flex items-start gap-3 p-3 rounded-lg border ${TIER_BG[a.risk_tier] ?? "border-gray-800"}`}>
-          {TIER_ICON[a.risk_tier] ?? <Info className="w-4 h-4 text-gray-400 flex-shrink-0" />}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-semibold text-gray-200 truncate">{a.asset_id}</span>
-              <span className="text-xs text-gray-500 flex-shrink-0">{timeAgo(a.timestamp)}</span>
-            </div>
-            <div className="text-xs text-gray-400 mt-0.5 truncate">{a.threat_type} · Score {a.risk_score}</div>
-            <div className="flex items-center gap-2 mt-1">
-              {a.explanation_available && (
-                <Link href={`/explain/${a.alert_id}`}
-                      className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors">
-                  View explanation →
+      {active.map((a) => {
+        const copilotHref =
+          `/copilot?alert=${encodeURIComponent(a.alert_id)}` +
+          `&asset=${encodeURIComponent(a.asset_id)}` +
+          `&risk=${encodeURIComponent(String(a.risk_score))}` +
+          `&threat=${encodeURIComponent(a.threat_type)}` +
+          `&description=${encodeURIComponent(a.description)}`;
+
+        return (
+          <div key={a.alert_id}
+               className={`flex items-start gap-3 p-3 rounded-lg border ${TIER_BG[a.risk_tier] ?? "border-gray-800"}`}>
+            {TIER_ICON[a.risk_tier] ?? <Info className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-semibold text-gray-200 truncate">{a.asset_id}</span>
+                <span className="text-xs text-gray-500 flex-shrink-0">{timeAgo(a.timestamp)}</span>
+              </div>
+              <div className="text-xs text-gray-400 mt-0.5 truncate">{a.threat_type} · Score {a.risk_score}</div>
+              <div className="flex items-center gap-2 mt-1">
+                {a.explanation_available && (
+                  <Link href={`/explain/${a.alert_id}`}
+                        className="text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors">
+                    View explanation →
+                  </Link>
+                )}
+                <Link
+                  href={copilotHref}
+                  className="flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300 transition-colors">
+                  <Bot className="w-2.5 h-2.5" /> Ask AI
                 </Link>
-              )}
-              <Link
-                href={`/copilot?asset=${a.asset_id}&risk=${a.risk_score}&threat=${a.threat_type}`}
-                className="flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300 transition-colors">
-                <Bot className="w-2.5 h-2.5" /> Ask AI
-              </Link>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

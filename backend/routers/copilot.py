@@ -54,6 +54,7 @@ class CopilotResponse(BaseModel):
     suggested_actions: list[str]
     intent:            str
     context_count:     int
+    cached:            bool = False
     timestamp:         str
 
 
@@ -76,8 +77,14 @@ def _get_chain():
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 @router.post("/chat", response_model=CopilotResponse)
-async def chat(req: CopilotRequest):
-    _check_rate_limit(req.session_id)
+async def chat(req: CopilotRequest, request: Request):
+    session_id = (
+        request.headers.get("X-Session-ID")
+        or request.cookies.get("session_id")
+        or req.session_id
+        or "default"
+    )
+    _check_rate_limit(session_id)
     chain = _get_chain()
 
     history_dicts = [m.model_dump() for m in req.history]
@@ -93,20 +100,28 @@ async def chat(req: CopilotRequest):
         suggested_actions= result.get("suggested_actions", []),
         intent=            result.get("intent", "general"),
         context_count=     result.get("context_count", 0),
+        cached=            bool(result.get("cached", False)),
         timestamp=         datetime.now(timezone.utc).isoformat(),
     )
 
 
 @router.get("/status")
 async def copilot_status():
-    """Check if the copilot is ready (FAISS index + Gemini key present)."""
+    """Check if the copilot is ready (FAISS index + at least one LLM key present)."""
     from rag.retrieval.retriever import retriever_available
     import os
 
+    nvidia_key_set  = bool(os.environ.get("NVIDIA_API_KEY"))
+    gemini_key_set  = bool(os.environ.get("GEMINI_API_KEY"))
+    llm_ready       = nvidia_key_set or gemini_key_set
+
     return {
         "faiss_index_ready": retriever_available(),
-        "gemini_key_set":    bool(os.environ.get("GEMINI_API_KEY")),
-        "ready":             retriever_available() and bool(os.environ.get("GEMINI_API_KEY")),
+        "nvidia_key_set":    nvidia_key_set,
+        "gemini_key_set":    gemini_key_set,
+        "llm_ready":         llm_ready,
+        "primary_llm":       "gemma-4-31b-it" if nvidia_key_set else "gemini-fallback",
+        "ready":             retriever_available() and llm_ready,
     }
 
 

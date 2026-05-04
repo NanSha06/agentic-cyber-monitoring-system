@@ -57,6 +57,7 @@ export interface CopilotResponse {
   suggested_actions: string[];
   intent:            string;
   context_count:     number;
+  cached:            boolean;
   timestamp:         string;
 }
 

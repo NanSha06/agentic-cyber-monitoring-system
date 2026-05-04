@@ -1,3 +1,5 @@
+import os
+
 from fastapi.testclient import TestClient
 
 from backend.main import app
@@ -5,6 +7,7 @@ from models.fusion.risk_scorer import RiskComponents, compute_risk_score, get_ri
 from rag.chains.conversational_chain import classify_intent
 
 
+os.environ["GEMINI_API_KEY"] = ""
 client = TestClient(app)
 
 
@@ -44,3 +47,73 @@ def test_risk_scorer_tiers_critical_alerts():
 
     assert score == 85.0
     assert get_risk_tier(score)["tier"] == "CRITICAL"
+
+
+def test_alert_explanation_matches_alert_record():
+    alert = client.get("/alerts/").json()[0]
+    response = client.get(f"/explain/{alert['alert_id']}")
+
+    assert response.status_code == 200
+    explanation = response.json()
+    assert explanation["alert_id"] == alert["alert_id"]
+    assert explanation["asset_id"] == alert["asset_id"]
+    assert explanation["risk_score"] == alert["risk_score"]
+    assert explanation["contributions"]
+
+
+def test_copilot_chat_uses_alert_context_and_returns_sources():
+    alert = client.get("/alerts/").json()[0]
+    response = client.post(
+        "/copilot/chat",
+        headers={"X-Session-ID": "v2-alert-test"},
+        json={
+            "message": f"Why is {alert['asset_id']} risky?",
+            "history": [],
+            "asset_context": {
+                "alert_id": alert["alert_id"],
+                "asset_id": alert["asset_id"],
+                "risk_score": alert["risk_score"],
+                "risk_tier": alert["risk_tier"],
+                "threat_type": alert["threat_type"],
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["intent"] == "alert_query"
+    assert body["response"]
+    assert body["sources"]
+    assert body["context_count"] > 0
+
+
+def test_copilot_repeated_alert_query_is_cached():
+    alert = client.get("/alerts/").json()[0]
+    payload = {
+        "message": f"Why is {alert['asset_id']} risky?",
+        "history": [],
+        "asset_context": {
+            "alert_id": alert["alert_id"],
+            "asset_id": alert["asset_id"],
+            "risk_score": alert["risk_score"],
+            "risk_tier": alert["risk_tier"],
+            "threat_type": alert["threat_type"],
+        },
+    }
+
+    first = client.post("/copilot/chat", headers={"X-Session-ID": "v2-cache-test"}, json=payload)
+    second = client.post("/copilot/chat", headers={"X-Session-ID": "v2-cache-test"}, json=payload)
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["cached"] is True
+
+
+def test_copilot_rate_limit_uses_session_header():
+    payload = {"message": "What is SOH?", "history": [], "session_id": "ignored"}
+    statuses = [
+        client.post("/copilot/chat", headers={"X-Session-ID": "v2-rate-test"}, json=payload).status_code
+        for _ in range(11)
+    ]
+
+    assert statuses[-1] == 429

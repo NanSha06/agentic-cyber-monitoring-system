@@ -1,23 +1,49 @@
 """
 rag/chains/alert_chain.py
-AlertRAGChain — retrieves context from FAISS and generates Gemini-grounded explanations.
-Falls back to LIME-only explanation if Gemini API is unavailable.
+AlertRAGChain — retrieves context from FAISS and generates LLM-grounded explanations.
+Uses Gemma 4 (primary) via LLMRouter; falls back to Gemini, then LIME-only if both are unavailable.
 """
 from __future__ import annotations
-import os
 import time
 import hashlib
 import json
+import os
 from pathlib import Path
-from functools import lru_cache
+from dotenv import load_dotenv
 
 # Response cache to avoid duplicate API calls
 _CACHE: dict[str, dict] = {}
 CACHE_PATH = Path("audit_logs/rag_cache.jsonl")
+CACHE_SCHEMA_VERSION = "llmrouter-gemma4-v1"
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
+
+
+def _load_persisted_cache() -> None:
+    if _CACHE or not CACHE_PATH.exists():
+        return
+    try:
+        for line in CACHE_PATH.read_text().splitlines():
+            entry = json.loads(line)
+            key = entry.get("key")
+            if key:
+                _CACHE[key] = {
+                    "answer": entry.get("answer", ""),
+                    "sources": entry.get("sources", []),
+                    "query": entry.get("query", ""),
+                    "context_count": entry.get("context_count", 0),
+                    "cached": True,
+                }
+    except Exception:
+        _CACHE.clear()
 
 
 def _cache_key(alert: dict, lime: dict) -> str:
-    payload = f"{alert.get('asset_id')}:{alert.get('risk_score')}:{json.dumps(lime, sort_keys=True)}"
+    nvidia_configured = bool(os.environ.get("NVIDIA_API_KEY"))
+    gemini_configured = bool(os.environ.get("GEMINI_API_KEY"))
+    payload = (
+        f"{CACHE_SCHEMA_VERSION}:nvidia={nvidia_configured}:gemini={gemini_configured}:"
+        f"{alert.get('asset_id')}:{alert.get('risk_score')}:{json.dumps(lime, sort_keys=True)}"
+    )
     return hashlib.md5(payload.encode()).hexdigest()[:12]
 
 
@@ -25,18 +51,14 @@ class AlertRAGChain:
     def __init__(self):
         from rag.retrieval.retriever import KnowledgeRetriever, retriever_available
         from rag.chains.prompts import build_alert_prompt
+        from backend.llm.router import LLMRouter
 
-        api_key = os.environ.get("GEMINI_API_KEY", "")
-        self.model = None
-        self.gemini_configured = bool(api_key)
+        _load_persisted_cache()
+        self.llm = LLMRouter()
         self.last_generation_error: str | None = None
-        if api_key:
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel("gemini-1.5-flash")
         self._build_alert_prompt = build_alert_prompt
 
-        # Load retriever if index exists, else operate in Gemini-only mode
+        # Load retriever if index exists, else operate in LLM-only mode
         self.retriever = None
         if retriever_available():
             try:
@@ -64,7 +86,7 @@ class AlertRAGChain:
 
         # Build prompt and call Gemini with retry
         prompt = self._build_alert_prompt(alert, lime_explanation, context_docs)
-        answer = self._call_gemini_with_retry(prompt)
+        answer = self._call_gemini_with_retry(prompt, alert, lime_explanation, context_docs)
 
         result = {
             "answer":        answer,
@@ -74,9 +96,11 @@ class AlertRAGChain:
             "cached":        False,
         }
 
-        # Cache the result
-        _CACHE[key] = result
-        self._persist_cache(key, alert, result)
+        # Cache only successful LLM answers. Fallbacks should recover once the
+        # model/key/network configuration is fixed.
+        if not self._is_fallback_answer(answer):
+            _CACHE[key] = result
+            self._persist_cache(key, alert, result)
         return result
 
     def _build_query(self, alert: dict, lime: dict) -> str:
@@ -91,50 +115,65 @@ class AlertRAGChain:
             f"What is the likely root cause and recommended mitigation?"
         )
 
-    def _call_gemini_with_retry(self, prompt: str, max_retries: int = 3) -> str:
-        """Call Gemini with exponential backoff. Returns fallback text if all retries fail."""
-        if self.model is None:
-            return self._fallback_answer()
-
+    def _call_gemini_with_retry(
+        self,
+        prompt: str,
+        alert: dict,
+        lime_explanation: dict,
+        context_docs: list[dict],
+        max_retries: int = 3,
+    ) -> str:
+        """Call LLMRouter (Gemma 4 → Gemini) with retry. Returns LIME fallback if all fail."""
         for attempt in range(max_retries):
             try:
                 self.last_generation_error = None
-                response = self.model.generate_content(prompt)
-                return response.text
+                return self.llm.generate(prompt, task_type="critical_reasoning")
             except Exception as e:
                 self.last_generation_error = str(e)
                 err = str(e)
-                if "429" in err or "quota" in err.lower():
+                if "429" in err or "quota" in err.lower() or "rate" in err.lower():
                     wait = 2 ** attempt
-                    print(f"  ⚠️  Gemini rate limit — retrying in {wait}s (attempt {attempt+1})")
+                    print(f"  ⚠️  LLM rate limit — retrying in {wait}s (attempt {attempt+1})")
                     time.sleep(wait)
                 else:
-                    print(f"  ⚠️  Gemini error: {e}")
+                    print(f"  ⚠️  LLM error: {e}")
                     break
-        return self._fallback_answer()
+        return self._fallback_answer(alert, lime_explanation, context_docs)
 
-    def _fallback_answer(self) -> str:
-        if self.gemini_configured:
-            reason = "Gemini generation is temporarily unavailable"
-            if self.last_generation_error and self._is_invalid_api_key_error(self.last_generation_error):
-                reason = "Gemini generation is unavailable because the configured API key was rejected"
-            return (
-                f"{reason}. I am using local alert fallback mode. Review the top LIME contributors "
-                "to identify whether the risk is battery-driven, cyber-driven, or cross-domain. "
-                "Recommended next steps: verify recent battery telemetry, inspect matching network "
-                "alerts, and follow the relevant SOP before taking containment action."
-            )
+    def _fallback_answer(self, alert: dict, lime_explanation: dict, context_docs: list[dict]) -> str:
+        contributors = lime_explanation.get("contributions", [])[:3]
+        factors = ", ".join(
+            f"{c.get('feature', 'unknown')} ({float(c.get('weight', 0)):+.1f})"
+            for c in contributors
+        ) or "no LIME contributors were available"
+        sources = sorted({d.get("source", "unknown") for d in context_docs})
+        source_text = ", ".join(f"[{s}]" for s in sources) if sources else "no retrieved sources"
+        asset_id = alert.get("asset_id", "this asset")
+        risk = alert.get("risk_score", 0)
+        threat = alert.get("threat_type", "unknown")
 
+        reason = "LLM generation (Gemma 4 + Gemini) is temporarily unavailable"
+        if self.last_generation_error and self._is_invalid_api_key_error(self.last_generation_error):
+            reason = "LLM generation is unavailable due to an invalid or missing API key"
         return (
-            "Gemini generation is not configured, so I am using local alert fallback mode. Review "
-            "the top LIME contributors to identify whether the risk is battery-driven, cyber-driven, "
-            "or cross-domain. Recommended next steps: verify recent battery telemetry, inspect "
-            "matching network alerts, and follow the relevant SOP before taking containment action."
+            f"{reason}. Local fallback: {asset_id} is at risk {risk}/100 with threat type "
+            f"{threat}. The strongest available contributors are {factors}. Retrieved context: "
+            f"{source_text}. Recommended actions: 1. verify battery telemetry and temperature "
+            "trend, 2. inspect matching network/authentication alerts, 3. follow the cited SOP "
+            "before containment or maintenance action."
         )
 
     def _is_invalid_api_key_error(self, error: str) -> bool:
         low = error.lower()
-        return "api_key_invalid" in low or "api key not found" in low or "invalid api key" in low
+        return (
+            "api_key_invalid" in low
+            or "api key not found" in low
+            or "invalid api key" in low
+            or "unauthorized" in low
+        )
+
+    def _is_fallback_answer(self, answer: str) -> bool:
+        return answer.startswith("LLM generation")
 
     def _persist_cache(self, key: str, alert: dict, result: dict):
         try:

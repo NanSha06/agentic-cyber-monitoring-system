@@ -4,8 +4,13 @@ Multi-turn conversational chain for the AI Copilot.
 Handles intent classification and routes to the correct chain.
 """
 from __future__ import annotations
-import os
 import time
+import hashlib
+import json
+from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv(dotenv_path=Path(__file__).resolve().parents[2] / ".env")
 
 # Intent types
 INTENT_ALERT_QUERY  = "alert_query"
@@ -18,6 +23,16 @@ SOP_KEYWORDS   = ["sop","procedure","protocol","steps","how to","what should","p
 
 # Max history turns to include in prompt
 MAX_HISTORY_TURNS = 5
+_RESPONSE_CACHE: dict[str, dict] = {}
+
+
+def _cache_key(message: str, history: list[dict], asset_context: dict | None) -> str:
+    payload = {
+        "message": message,
+        "history": history[-(MAX_HISTORY_TURNS * 2):],
+        "asset_context": asset_context or {},
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()[:16]
 
 
 def classify_intent(message: str) -> str:
@@ -32,17 +47,11 @@ def classify_intent(message: str) -> str:
 class ConversationalChain:
     def __init__(self):
         from rag.retrieval.retriever import KnowledgeRetriever, retriever_available
-        from rag.chains.prompts import build_sop_prompt, GENERAL_QUERY_PROMPT
+        from rag.chains.prompts import GENERAL_QUERY_PROMPT
+        from backend.llm.router import LLMRouter
 
-        api_key = os.environ.get("GEMINI_API_KEY", "")
-        self.model = None
-        self.gemini_configured = bool(api_key)
+        self.llm = LLMRouter()
         self.last_generation_error: str | None = None
-        if api_key:
-            import google.generativeai as genai
-            genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel("gemini-1.5-flash")
-        self._build_sop_prompt = build_sop_prompt
         self._general_prompt   = GENERAL_QUERY_PROMPT
 
         self.retriever = None
@@ -58,6 +67,10 @@ class ConversationalChain:
         history: list[dict],
         asset_context: dict | None = None,
     ) -> dict:
+        key = _cache_key(message, history, asset_context)
+        if key in _RESPONSE_CACHE:
+            return {**_RESPONSE_CACHE[key], "cached": True}
+
         intent = classify_intent(message)
         context_docs = []
 
@@ -72,28 +85,20 @@ class ConversationalChain:
             # Use AlertRAGChain for asset-specific questions
             from rag.chains.alert_chain import AlertRAGChain
             chain = AlertRAGChain()
-            alert = {
-                "asset_id":   asset_context.get("asset_id", "unknown"),
-                "risk_score": asset_context.get("risk_score", 0),
-                "risk_tier":  asset_context.get("risk_tier", "UNKNOWN"),
-                "threat_type": asset_context.get("threat_type", "unknown"),
-            }
-            lime = asset_context.get("lime_explanation", {"contributions": []})
+            alert, lime = self._hydrate_alert_context(asset_context)
             result = chain.run(alert, lime)
             answer = result["answer"]
             sources = result["sources"]
             suggested = self._suggest_actions(asset_context)
+            context_count = result.get("context_count", 0)
 
         elif intent == INTENT_SOP_LOOKUP:
-            # Retrieve SOP documents and answer
-            if self.retriever:
-                context_docs = self.retriever.retrieve(message, k=4)
-            prompt = self._build_sop_prompt(message, context_docs)
-            if history_text:
-                prompt = f"Conversation so far:\n{history_text}\n\n{prompt}"
-            answer = self._call_gemini(prompt)
-            sources = [d["source"] for d in context_docs]
-            suggested = ["View SOP documentation", "Open incident playbook", "Escalate to tier-2"]
+            from rag.chains.sop_chain import SOPChain
+            result = SOPChain().run(message, history_text=history_text)
+            answer = result["answer"]
+            sources = result["sources"]
+            suggested = result["suggested_actions"]
+            context_count = result.get("context_count", 0)
 
         else:
             # General query — direct Gemini with history
@@ -106,54 +111,97 @@ class ConversationalChain:
                 + (f"Conversation history:\n{history_text}\n\n" if history_text else "")
                 + f"Operator: {message}\nAssistant:"
             )
-            answer = self._call_gemini(prompt)
+            answer = self._call_llm(prompt)
             sources = [d["source"] for d in context_docs]
             suggested = ["Ask about an asset", "Look up a procedure", "View active alerts"]
+            context_count = len(context_docs)
 
-        return {
+        response = {
             "response":          answer,
             "sources":           list(set(sources)),
             "intent":            intent,
             "suggested_actions": suggested,
-            "context_count":     len(context_docs),
+            "context_count":     context_count,
+            "cached":            False,
         }
+        if not self._is_fallback_response(answer):
+            _RESPONSE_CACHE[key] = response
+        return response
 
-    def _call_gemini(self, prompt: str) -> str:
-        if self.model is None:
-            return self._fallback_response(prompt)
+    def _hydrate_alert_context(self, asset_context: dict) -> tuple[dict, dict]:
+        alert_id = asset_context.get("alert_id")
+        alert = None
+        lime = asset_context.get("lime_explanation")
 
+        if alert_id:
+            try:
+                from backend.services.demo_data import get_alert, get_explanation
+                alert = get_alert(str(alert_id))
+                lime = lime or get_explanation(str(alert_id))
+            except Exception:
+                alert = None
+
+        if alert is None:
+            asset_id = str(asset_context.get("asset_id", "unknown"))
+            try:
+                from backend.services.demo_data import get_latest_alert_for_asset, get_explanation
+                alert = get_latest_alert_for_asset(asset_id)
+                if alert and not lime:
+                    lime = get_explanation(alert["alert_id"])
+            except Exception:
+                alert = None
+
+        if alert is None:
+            alert = {
+                "alert_id": asset_context.get("alert_id", "ad-hoc"),
+                "asset_id": asset_context.get("asset_id", "unknown"),
+                "risk_score": asset_context.get("risk_score", 0),
+                "risk_tier": asset_context.get("risk_tier", "UNKNOWN"),
+                "threat_type": asset_context.get("threat_type", "unknown"),
+                "description": asset_context.get("description", ""),
+            }
+
+        return alert, lime or {"contributions": []}
+
+    def _call_llm(self, prompt: str) -> str:
+        """Call LLMRouter (Gemma 4 → Gemini) with retry."""
         for attempt in range(3):
             try:
                 self.last_generation_error = None
-                return self.model.generate_content(prompt).text
+                return self.llm.generate(prompt, task_type="critical_reasoning")
             except Exception as e:
                 self.last_generation_error = str(e)
-                if "429" in str(e):
+                if "429" in str(e) or "rate" in str(e).lower():
                     time.sleep(2 ** attempt)
                 else:
                     break
         return self._fallback_response(prompt)
 
-    def _fallback_response(self, prompt: str) -> str:
-        if self.gemini_configured:
-            reason = "Gemini generation is temporarily unavailable"
-            if self.last_generation_error and self._is_invalid_api_key_error(self.last_generation_error):
-                reason = "Gemini generation is unavailable because the configured API key was rejected"
-            return (
-                f"{reason}. I am using local RAG fallback mode with the available knowledge index. "
-                "Use the retrieved sources for SOP review, compare top contributors against recent "
-                "telemetry, and escalate CRITICAL assets before automated containment."
-            )
+    # Backwards-compat alias
+    def _call_gemini(self, prompt: str) -> str:
+        return self._call_llm(prompt)
 
+    def _fallback_response(self, prompt: str) -> str:
+        reason = "LLM generation (Gemma 4 + Gemini) is temporarily unavailable"
+        if self.last_generation_error and self._is_invalid_api_key_error(self.last_generation_error):
+            reason = "LLM generation is unavailable due to an invalid or missing API key"
         return (
-            "Gemini generation is not configured, so I am using local RAG fallback mode with the "
-            "available knowledge index. Use the retrieved sources for SOP review, compare top "
-            "contributors against recent telemetry, and escalate CRITICAL assets before automated containment."
+            f"{reason}. I am using local RAG fallback mode with the available knowledge index. "
+            "Use the retrieved sources for SOP review, compare top contributors against recent "
+            "telemetry, and escalate CRITICAL assets before automated containment."
         )
 
     def _is_invalid_api_key_error(self, error: str) -> bool:
         low = error.lower()
-        return "api_key_invalid" in low or "api key not found" in low or "invalid api key" in low
+        return (
+            "api_key_invalid" in low
+            or "api key not found" in low
+            or "invalid api key" in low
+            or "unauthorized" in low
+        )
+
+    def _is_fallback_response(self, answer: str) -> bool:
+        return answer.startswith("LLM generation")
 
     def _suggest_actions(self, asset_context: dict) -> list[str]:
         tier = asset_context.get("risk_tier", "")
