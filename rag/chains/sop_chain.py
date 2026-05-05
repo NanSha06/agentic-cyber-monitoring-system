@@ -31,7 +31,7 @@ class SOPChain:
                 self.retriever = None
 
     def run(self, query: str, history_text: str = "") -> dict:
-        context_docs = self.retriever.retrieve(query, k=4) if self.retriever else []
+        context_docs = self.retriever.retrieve_mmr(query, k=7) if self.retriever else []
         prompt = self._build_sop_prompt(query, context_docs)
         if history_text:
             prompt = f"Conversation so far:\n{history_text}\n\n{prompt}"
