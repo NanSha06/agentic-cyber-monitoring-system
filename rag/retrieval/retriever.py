@@ -26,7 +26,7 @@ class KnowledgeRetriever:
             self.embeddings,
             allow_dangerous_deserialization=True,
         )
-        print(f"âœ… KnowledgeRetriever loaded from {index_path}")
+        print(f"[OK] KnowledgeRetriever loaded from {index_path}")
 
     @classmethod
     def get_instance(cls) -> "KnowledgeRetriever":

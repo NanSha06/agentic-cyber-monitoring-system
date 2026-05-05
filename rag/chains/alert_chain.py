@@ -64,9 +64,9 @@ class AlertRAGChain:
             try:
                 self.retriever = KnowledgeRetriever.get_instance()
             except Exception as e:
-                print(f"⚠️  Retriever load failed: {e} — operating without RAG context")
+                print(f"[WARN] Retriever load failed: {e} -- operating without RAG context")
         else:
-            print("⚠️  FAISS index not found. Run: python rag/ingestion/build_index.py")
+            print("[WARN] FAISS index not found. Run: python rag/ingestion/build_index.py")
 
     def run(self, alert: dict, lime_explanation: dict) -> dict:
         """Run the full RAG chain: retrieve → prompt → generate."""
@@ -82,7 +82,7 @@ class AlertRAGChain:
             try:
                 context_docs = self.retriever.retrieve(query, k=5)
             except Exception as e:
-                print(f"⚠️  Retrieval failed: {e}")
+                print(f"[WARN] Retrieval failed: {e}")
 
         # Build prompt and call Gemini with retry
         prompt = self._build_alert_prompt(alert, lime_explanation, context_docs)
@@ -133,10 +133,10 @@ class AlertRAGChain:
                 err = str(e)
                 if "429" in err or "quota" in err.lower() or "rate" in err.lower():
                     wait = 2 ** attempt
-                    print(f"  ⚠️  LLM rate limit — retrying in {wait}s (attempt {attempt+1})")
+                    print(f"  [WARN] LLM rate limit -- retrying in {wait}s (attempt {attempt+1})")
                     time.sleep(wait)
                 else:
-                    print(f"  ⚠️  LLM error: {e}")
+                    print(f"  [WARN] LLM error: {e}")
                     break
         return self._fallback_answer(alert, lime_explanation, context_docs)
 

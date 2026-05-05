@@ -28,12 +28,12 @@ class LLMRouter:
         try:
             self._gemma = GemmaClient()
         except Exception as e:
-            print(f"⚠️  LLMRouter: Gemma client unavailable — {e}")
+            print(f"[WARN] LLMRouter: Gemma client unavailable -- {e}")
 
         try:
             self._gemini = GeminiClient()
         except Exception as e:
-            print(f"⚠️  LLMRouter: Gemini client unavailable — {e}")
+            print(f"[WARN] LLMRouter: Gemini client unavailable -- {e}")
 
     # task_type is accepted for API compatibility but routing is currently
     # based solely on availability (Gemma → Gemini).
@@ -42,13 +42,13 @@ class LLMRouter:
             try:
                 return self._gemma.generate(prompt)
             except Exception as e:
-                print(f"⚠️  LLMRouter: Gemma generation failed ({e}), falling back to Gemini")
+                print(f"[WARN] LLMRouter: Gemma generation failed ({e}), falling back to Gemini")
 
         if self._gemini is not None:
             try:
                 return self._gemini.generate(prompt)
             except Exception as e:
-                print(f"⚠️  LLMRouter: Gemini fallback also failed ({e})")
+                print(f"[WARN] LLMRouter: Gemini fallback also failed ({e})")
 
         raise RuntimeError(
             "LLMRouter: Both Gemma and Gemini are unavailable. "
