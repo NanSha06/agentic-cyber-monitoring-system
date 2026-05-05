@@ -101,6 +101,27 @@ export interface AgentStatus {
   agents:      string[];
 }
 
+export interface AuditLogEntry {
+  audit_id:    string;
+  timestamp:   string;
+  record_type: string;
+  event_id?:   string | null;
+  agent_name?: string | null;
+  tool_name?:  string | null;
+  server?:     string | null;
+  payload?:    Record<string, unknown>;
+  arguments?:  Record<string, unknown>;
+  result?:     Record<string, unknown>;
+}
+
+export interface AgentApprovalResponse {
+  event_id:         string;
+  decision:         "approved" | "rejected";
+  status:           string;
+  executed_actions: Record<string, unknown>[];
+  audit_id:         string;
+}
+
 async function fetchJSON<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
@@ -144,6 +165,18 @@ export const api = {
   agentStatus: () => fetchJSON<AgentStatus>("/agents/status"),
   runAlertPipeline: (alertId: string) =>
     fetchJSON<AgentRunResponse>(`/agents/run-alert/${alertId}`, { method: "POST" }),
+  approveAgentRun: (body: {
+    event_id: string;
+    alert_id: string | null;
+    decision: "approved" | "rejected";
+    gated_actions: string[];
+    operator?: string;
+    note?: string;
+  }) => fetchJSON<AgentApprovalResponse>("/agents/approval", {
+    method: "POST",
+    body:   JSON.stringify(body),
+  }),
+  getAuditLog: (limit = 100) => fetchJSON<{ records: AuditLogEntry[] }>(`/agents/audit-log?limit=${limit}`),
 
   // Health
   health: () => fetchJSON<{ status: string; timestamp: string; version: string }>("/health/"),

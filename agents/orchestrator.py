@@ -16,6 +16,9 @@ from agents.monitoring_agent import MonitoringAgent
 from agents.recommendation_agent import RecommendationAgent
 from agents.reporting_agent import ReportingAgent
 from backend.services.demo_data import get_alert
+from mcp_servers.audit_store import read_audit_records
+from mcp_servers.cyber_mcp.server import quarantine_asset
+from mcp_servers.governance_mcp.server import write_audit_log
 
 
 class AgentRunRequest(BaseModel):
@@ -31,6 +34,23 @@ class AgentRunResponse(BaseModel):
     requires_human_approval: bool
     trace: list[dict[str, Any]]
     bus_backend: str
+
+
+class AgentApprovalRequest(BaseModel):
+    event_id: str
+    alert_id: str | None = None
+    decision: str = Field(pattern="^(approved|rejected)$")
+    gated_actions: list[str] = Field(default_factory=list)
+    operator: str = "human_operator"
+    note: str | None = None
+
+
+class AgentApprovalResponse(BaseModel):
+    event_id: str
+    decision: str
+    status: str
+    executed_actions: list[dict[str, Any]]
+    audit_id: str
 
 
 class AgentOrchestrator:
@@ -85,6 +105,18 @@ class AgentOrchestrator:
             finished_at = utc_now()
             outputs.append(output)
             await bus.publish_output(output)
+            write_audit_log(
+                record_type="agent_decision",
+                event_id=current_input.event_id,
+                agent_name=output.agent_name,
+                payload={
+                    "alert_id": current_input.alert_id,
+                    "status": output.status,
+                    "result": output.result,
+                    "errors": output.errors,
+                    "requires_human_approval": output.requires_human_approval,
+                },
+            )
             requires_human_approval = requires_human_approval or output.requires_human_approval
             current_input = append_trace(
                 current_input,
@@ -162,3 +194,47 @@ async def run_alert_pipeline(alert_id: str, request: AgentRunRequest | None = No
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/approval", response_model=AgentApprovalResponse)
+async def record_agent_approval(request: AgentApprovalRequest):
+    alert = get_alert(request.alert_id) if request.alert_id else None
+    asset_id = alert.get("asset_id") if alert else None
+    executed_actions: list[dict[str, Any]] = []
+
+    if request.decision == "approved":
+        destructive_text = " ".join(request.gated_actions).lower()
+        if asset_id and any(keyword in destructive_text for keyword in ("quarantine", "isolate", "disconnect")):
+            executed_actions.append(
+                quarantine_asset(
+                    asset_id,
+                    event_id=request.event_id,
+                    approved_by=request.operator,
+                    reason=request.note or "HITL-approved containment",
+                )
+            )
+
+    audit_entry = write_audit_log(
+        record_type="human_approval",
+        event_id=request.event_id,
+        payload={
+            "alert_id": request.alert_id,
+            "decision": request.decision,
+            "operator": request.operator,
+            "note": request.note,
+            "gated_actions": request.gated_actions,
+            "executed_actions": executed_actions,
+        },
+    )
+    return AgentApprovalResponse(
+        event_id=request.event_id,
+        decision=request.decision,
+        status="recorded",
+        executed_actions=executed_actions,
+        audit_id=audit_entry["audit_id"],
+    )
+
+
+@router.get("/audit-log")
+async def agent_audit_log(limit: int = 100):
+    return {"records": read_audit_records(limit)}

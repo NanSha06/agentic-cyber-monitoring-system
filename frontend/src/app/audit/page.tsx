@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AgentRunResponse, Alert, api } from "@/lib/api";
+import { AgentRunResponse, Alert, AuditLogEntry, api } from "@/lib/api";
 import { AgentTimeline } from "@/components/AgentTimeline";
 import { ApprovalModal } from "@/components/ApprovalModal";
 import { Activity, AlertTriangle, ArrowLeft, Bot, CheckCircle2, Play, Shield } from "lucide-react";
@@ -37,6 +37,7 @@ export default function AuditPage() {
   const [error, setError] = useState<string | null>(null);
   const [approvalRun, setApprovalRun] = useState<AgentRunResponse | null>(null);
   const [approvalNote, setApprovalNote] = useState<string | null>(null);
+  const [auditLogs, setAuditLogs] = useState<AuditLogEntry[]>([]);
 
   useEffect(() => {
     api.getAlerts()
@@ -47,6 +48,21 @@ export default function AuditPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Unable to load alerts"))
       .finally(() => setLoading(false));
+  }, []);
+
+  async function refreshAuditLogs() {
+    try {
+      const response = await api.getAuditLog();
+      setAuditLogs(response.records.reverse());
+    } catch {
+      setAuditLogs([]);
+    }
+  }
+
+  useEffect(() => {
+    api.getAuditLog()
+      .then((response) => setAuditLogs(response.records.reverse()))
+      .catch(() => setAuditLogs([]));
   }, []);
 
   const selectedRun = useMemo(
@@ -68,6 +84,7 @@ export default function AuditPage() {
       if (result.requires_human_approval) {
         setApprovalRun(result);
       }
+      await refreshAuditLogs();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Agent run failed");
     } finally {
@@ -75,10 +92,24 @@ export default function AuditPage() {
     }
   }
 
-  function recordDecision(decision: "approved" | "rejected") {
+  async function recordDecision(decision: "approved" | "rejected", gatedActions: string[]) {
     if (!approvalRun) return;
-    setApprovalNote(`${decision === "approved" ? "Approved" : "Rejected"} event ${approvalRun.event_id.slice(0, 8)}`);
-    setApprovalRun(null);
+    try {
+      const response = await api.approveAgentRun({
+        event_id: approvalRun.event_id,
+        alert_id: approvalRun.alert_id,
+        decision,
+        gated_actions: gatedActions,
+        operator: "dashboard_operator",
+      });
+      setApprovalNote(
+        `${decision === "approved" ? "Approved" : "Rejected"} event ${approvalRun.event_id.slice(0, 8)} · audit ${response.audit_id.slice(0, 8)}`
+      );
+      setApprovalRun(null);
+      await refreshAuditLogs();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Approval could not be recorded");
+    }
   }
 
   return (
@@ -183,7 +214,7 @@ export default function AuditPage() {
             <div>
               <h2 className="text-lg font-semibold text-white">Agent Timeline & Audit Trail</h2>
               <p className="mt-1 text-sm text-gray-500">
-                Agent decisions are shown here now; Governance MCP persistence is the next backend step.
+                Agent decisions, MCP tool calls, and approval decisions are persisted by Governance MCP.
               </p>
             </div>
             {selectedRun?.requires_human_approval && (
@@ -197,6 +228,32 @@ export default function AuditPage() {
             )}
           </div>
           <AgentTimeline run={selectedRun} />
+          <div className="mt-8 border-t border-gray-800 pt-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h3 className="text-base font-semibold text-white">Governance Audit Log</h3>
+              <span className="text-xs text-gray-500">{auditLogs.length} records</span>
+            </div>
+            <div className="max-h-80 space-y-2 overflow-y-auto pr-2">
+              {auditLogs.length === 0 ? (
+                <div className="rounded-md border border-gray-800 bg-gray-950 p-3 text-sm text-gray-500">
+                  No persisted audit records found.
+                </div>
+              ) : auditLogs.map((entry) => (
+                <div key={entry.audit_id} className="rounded-md border border-gray-800 bg-gray-950 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-mono text-xs text-gray-400">{entry.audit_id.slice(0, 8)}</span>
+                    <span className="text-xs text-gray-500">{new Date(entry.timestamp).toLocaleString()}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                    <span className="rounded border border-indigo-900/60 px-2 py-1 text-indigo-200">{entry.record_type}</span>
+                    {entry.agent_name && <span className="rounded border border-gray-800 px-2 py-1 text-gray-300">{entry.agent_name}</span>}
+                    {entry.tool_name && <span className="rounded border border-gray-800 px-2 py-1 text-gray-300">{entry.tool_name}</span>}
+                    {entry.event_id && <span className="rounded border border-gray-800 px-2 py-1 font-mono text-gray-400">{entry.event_id.slice(0, 8)}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </section>
       </div>
 

@@ -6,6 +6,8 @@ from __future__ import annotations
 import os
 
 from agents.base import AgentInput, AgentOutput, BaseAgent
+from mcp_servers.battery_mcp.server import get_asset_health
+from mcp_servers.cyber_mcp.server import get_active_alerts
 
 
 class RecommendationAgent(BaseAgent):
@@ -36,6 +38,16 @@ class RecommendationAgent(BaseAgent):
         risk_score = alert.get("risk_score", "N/A")
         threat = alert.get("threat_type", "unknown")
         tier = alert.get("risk_tier", "UNKNOWN")
+        battery_context = {}
+        cyber_context = {}
+        try:
+            battery_context = get_asset_health(asset_id, input.event_id)
+        except Exception as exc:
+            battery_context = {"unavailable": str(exc)}
+        try:
+            cyber_context = get_active_alerts(asset_id, input.event_id)
+        except Exception as exc:
+            cyber_context = {"unavailable": str(exc)}
 
         prompt = f"""
 You are a cyber-physical security expert for industrial battery management systems.
@@ -46,6 +58,8 @@ Alert Details:
 - Risk Tier:   {tier}
 - Threat Type: {threat}
 - Diagnosis:   {diagnosis}
+- Battery MCP: {battery_context}
+- Cyber MCP:   {cyber_context}
 - Payload:     {alert}
 
 Suggest the top 3 concrete mitigation steps for this alert.
@@ -68,7 +82,12 @@ Format as a numbered list with a single sentence per step.
             event_id=input.event_id,
             agent_name=self.name,
             status=status,
-            result={"proposed_actions": actions, "prompt_context": prompt.strip()},
+            result={
+                "proposed_actions": actions,
+                "battery_context": battery_context,
+                "cyber_context": cyber_context,
+                "prompt_context": prompt.strip(),
+            },
             next_agent="compliance",
         )
 

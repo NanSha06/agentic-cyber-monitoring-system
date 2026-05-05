@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from agents.base import AgentInput, AgentOutput, BaseAgent
 from backend.services.demo_data import get_explanation
+from mcp_servers.analytics_mcp.server import get_feature_importance
 
 
 class DiagnosisAgent(BaseAgent):
@@ -13,8 +14,13 @@ class DiagnosisAgent(BaseAgent):
     async def run(self, input: AgentInput) -> AgentOutput:  # noqa: A002
         alert = input.payload.get("alert", input.payload)
         alert_id = input.alert_id or alert.get("alert_id")
-        explanation = get_explanation(alert_id) if alert_id else None
-        contributions = explanation.get("contributions", []) if explanation else []
+        explanation = None
+        if alert_id:
+            try:
+                explanation = get_feature_importance(alert_id, input.event_id)
+            except Exception:
+                explanation = get_explanation(alert_id)
+        contributions = explanation.get("top_factors") or explanation.get("contributions", []) if explanation else []
         top_factors = sorted(
             contributions,
             key=lambda item: abs(float(item.get("weight", 0))),

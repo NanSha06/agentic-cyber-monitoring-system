@@ -8,7 +8,7 @@ interface Props {
   run: AgentRunResponse | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onDecision: (decision: "approved" | "rejected") => void;
+  onDecision: (decision: "approved" | "rejected", gatedActions: string[]) => void | Promise<void>;
 }
 
 export function ApprovalModal({ run, open, onOpenChange, onDecision }: Props) {
@@ -41,14 +41,14 @@ export function ApprovalModal({ run, open, onOpenChange, onDecision }: Props) {
           <div className="mt-6 flex justify-end gap-3">
             <button
               type="button"
-              onClick={() => onDecision("rejected")}
+              onClick={() => onDecision("rejected", gatedActions)}
               className="inline-flex items-center gap-2 rounded-md border border-gray-700 px-4 py-2 text-sm text-gray-200 hover:bg-gray-900"
             >
               <X className="h-4 w-4" /> Reject
             </button>
             <button
               type="button"
-              onClick={() => onDecision("approved")}
+              onClick={() => onDecision("approved", gatedActions)}
               className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
             >
               <Check className="h-4 w-4" /> Approve

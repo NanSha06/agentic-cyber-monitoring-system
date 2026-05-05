@@ -123,9 +123,9 @@ frontend/src/components/
 ```
 
 #### UI Features
-| Feature | Description |
-|---|---|
-| Audit Trail | Real-time feed of all agent actions and MCP tool executions. |
+| Feature        | Description |
+|--------------- |---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Audit Trail    | Real-time feed of all agent actions and MCP tool executions. |
 | Agent Timeline | Visual progress bar showing alert transitioning through the 5 agents. |
 | Human Approval | Modal triggering when Compliance Agent blocks an action like `quarantine_asset`. |
 
