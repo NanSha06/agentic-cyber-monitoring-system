@@ -35,7 +35,7 @@ def chunk_documents(doc_dir: str = "rag/docs") -> list:
             metadatas=[{"source": fpath.name, "full_path": str(fpath)}],
         )
         chunks.extend(docs)
-        print(f"  📄 {fpath.name} → {len(docs)} chunks")
+        print(f"  [+] {fpath.name} -> {len(docs)} chunks")
 
-    print(f"✅ Total chunks: {len(chunks)}")
+    print(f"[OK] Total chunks: {len(chunks)}")
     return chunks

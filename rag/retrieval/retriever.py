@@ -1,6 +1,6 @@
-"""
+﻿"""
 rag/retrieval/retriever.py
-KnowledgeRetriever — loads the persisted FAISS index and performs similarity search.
+KnowledgeRetriever â€” loads the persisted FAISS index and performs similarity search.
 """
 from __future__ import annotations
 
@@ -26,18 +26,18 @@ class KnowledgeRetriever:
             self.embeddings,
             allow_dangerous_deserialization=True,
         )
-        print(f"✅ KnowledgeRetriever loaded from {index_path}")
+        print(f"âœ… KnowledgeRetriever loaded from {index_path}")
 
     @classmethod
     def get_instance(cls) -> "KnowledgeRetriever":
-        """Singleton — avoids reloading the embedding model on every request."""
+        """Singleton â€” avoids reloading the embedding model on every request."""
         if cls._instance is None:
             cls._instance = cls()
         return cls._instance
 
     @classmethod
     def reset(cls) -> None:
-        """Force reload — call after rebuilding the index."""
+        """Force reload â€” call after rebuilding the index."""
         cls._instance = None
 
     def retrieve(self, query: str, k: int = 5) -> list[dict]:

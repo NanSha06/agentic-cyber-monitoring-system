@@ -1,4 +1,4 @@
-"""
+﻿"""
 backend/main.py
 FastAPI application entry point for the Cyber-Battery Intelligence Platform.
 
@@ -6,6 +6,9 @@ Start with:
     uvicorn backend.main:app --reload --port 8000
 """
 from __future__ import annotations
+import os
+os.environ.setdefault('USE_TF', '0')
+os.environ.setdefault('USE_JAX', '0')
 import sys
 from pathlib import Path
 
@@ -34,7 +37,7 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# ── CORS ──────────────────────────────────────────────────────────────────────
+# â”€â”€ CORS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://localhost:3001"],
@@ -43,13 +46,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── Routers ───────────────────────────────────────────────────────────────────
+# â”€â”€ Routers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 app.include_router(health.router)
 app.include_router(assets.router)
 app.include_router(predictions.router)
 app.include_router(alerts.router)
 app.include_router(explanations.router)
-app.include_router(copilot.router)     # ← V2: AI Copilot
+app.include_router(copilot.router)     # â† V2: AI Copilot
 app.include_router(ws_router)
 
 
