@@ -95,10 +95,11 @@ export default function CommandCenter() {
             <span className="text-lg font-bold tracking-tight">
               Cyber<span className="text-indigo-400">Battery</span> Intelligence
             </span>
-            <span className="text-xs text-gray-500 border border-gray-700 px-2 py-0.5 rounded-full">V2</span>
+            <span className="text-xs text-gray-500 border border-gray-700 px-2 py-0.5 rounded-full">V3</span>
           </div>
           <div className="flex items-center gap-6 text-sm">
             <span className="font-semibold text-indigo-300">Command Center</span>
+            <Link href="/audit" className="text-gray-400 hover:text-white transition-colors">Audit</Link>
             <Link href="/copilot" className="text-gray-400 hover:text-white transition-colors">AI Copilot</Link>
             <Link href="/assets" className="text-gray-400 hover:text-white transition-colors">Assets</Link>
             <Link href="/explain/demo" className="text-gray-400 hover:text-white transition-colors">Explain</Link>

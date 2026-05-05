@@ -67,6 +67,40 @@ export interface CopilotStatus {
   ready:             boolean;
 }
 
+export interface AgentTraceEntry {
+  agent_name:  string;
+  status:      "success" | "fallback" | "blocked" | "failed" | "skipped";
+  started_at:  string;
+  finished_at: string;
+  summary:     string;
+}
+
+export interface AgentOutput {
+  event_id:                string;
+  agent_name:              string;
+  status:                  "success" | "fallback" | "blocked" | "failed" | "skipped";
+  result:                  Record<string, unknown>;
+  next_agent:              string | null;
+  errors:                  string[];
+  requires_human_approval: boolean;
+}
+
+export interface AgentRunResponse {
+  event_id:                string;
+  alert_id:                string | null;
+  status:                  string;
+  outputs:                 AgentOutput[];
+  requires_human_approval: boolean;
+  trace:                   AgentTraceEntry[];
+  bus_backend:             string;
+}
+
+export interface AgentStatus {
+  status:      string;
+  bus_backend: string;
+  agents:      string[];
+}
+
 async function fetchJSON<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
@@ -105,6 +139,11 @@ export const api = {
     fetchJSON<{ prompts: string[] }>(
       `/copilot/suggested-prompts${assetId ? `?asset_id=${assetId}` : ""}`
     ),
+
+  // Agents (V3)
+  agentStatus: () => fetchJSON<AgentStatus>("/agents/status"),
+  runAlertPipeline: (alertId: string) =>
+    fetchJSON<AgentRunResponse>(`/agents/run-alert/${alertId}`, { method: "POST" }),
 
   // Health
   health: () => fetchJSON<{ status: string; timestamp: string; version: string }>("/health/"),

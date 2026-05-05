@@ -1,9 +1,12 @@
 "use client";
-import { Alert } from "@/lib/api";
-import { AlertTriangle, ShieldAlert, Info, Bot } from "lucide-react";
+import { useState } from "react";
+import { AgentRunResponse, Alert, api } from "@/lib/api";
+import { AlertTriangle, ShieldAlert, Info, Bot, Play, Loader2, History } from "lucide-react";
 import Link from "next/link";
 
 interface Props { alerts: Alert[] }
+
+const HISTORY_KEY = "cyberbattery.v3.agentRuns";
 
 const TIER_ICON: Record<string, React.ReactNode> = {
   CRITICAL:    <ShieldAlert className="w-4 h-4 text-red-400 flex-shrink-0" />,
@@ -25,8 +28,38 @@ function timeAgo(iso: string) {
   return `${Math.floor(mins / 60)}h ago`;
 }
 
+function storeAgentRun(run: AgentRunResponse) {
+  try {
+    const raw = window.localStorage.getItem(HISTORY_KEY);
+    const runs = raw ? JSON.parse(raw) : [];
+    const nextRuns = [run, ...(Array.isArray(runs) ? runs : []).filter((item) => item.event_id !== run.event_id)];
+    window.localStorage.setItem(HISTORY_KEY, JSON.stringify(nextRuns.slice(0, 20)));
+  } catch {
+    return;
+  }
+}
+
 export function AlertFeed({ alerts }: Props) {
   const active = alerts.filter((a) => !a.resolved).slice(0, 8);
+  const [runningAlertId, setRunningAlertId] = useState<string | null>(null);
+  const [runStatus, setRunStatus] = useState<Record<string, "approval" | "complete" | "failed">>({});
+
+  async function runAgents(alertId: string) {
+    setRunningAlertId(alertId);
+    setRunStatus((current) => ({ ...current, [alertId]: "complete" }));
+    try {
+      const run = await api.runAlertPipeline(alertId);
+      storeAgentRun(run);
+      setRunStatus((current) => ({
+        ...current,
+        [alertId]: run.requires_human_approval ? "approval" : "complete",
+      }));
+    } catch {
+      setRunStatus((current) => ({ ...current, [alertId]: "failed" }));
+    } finally {
+      setRunningAlertId(null);
+    }
+  }
 
   if (!active.length) {
     return (
@@ -69,6 +102,33 @@ export function AlertFeed({ alerts }: Props) {
                   className="flex items-center gap-1 text-[10px] text-violet-400 hover:text-violet-300 transition-colors">
                   <Bot className="w-2.5 h-2.5" /> Ask AI
                 </Link>
+                <button
+                  type="button"
+                  onClick={() => runAgents(a.alert_id)}
+                  disabled={runningAlertId === a.alert_id}
+                  className="flex items-center gap-1 text-[10px] text-green-400 hover:text-green-300 disabled:text-gray-500 transition-colors"
+                  title="Run V3 autonomous analysis"
+                >
+                  {runningAlertId === a.alert_id
+                    ? <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                    : <Play className="w-2.5 h-2.5" />}
+                  V3 run
+                </button>
+                {runStatus[a.alert_id] && (
+                  <Link
+                    href="/audit"
+                    className={`flex items-center gap-1 text-[10px] transition-colors ${
+                      runStatus[a.alert_id] === "failed"
+                        ? "text-red-400 hover:text-red-300"
+                        : runStatus[a.alert_id] === "approval"
+                          ? "text-orange-400 hover:text-orange-300"
+                          : "text-gray-400 hover:text-gray-300"
+                    }`}
+                  >
+                    <History className="w-2.5 h-2.5" />
+                    {runStatus[a.alert_id] === "approval" ? "Review" : runStatus[a.alert_id]}
+                  </Link>
+                )}
               </div>
             </div>
           </div>
