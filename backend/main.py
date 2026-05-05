@@ -25,6 +25,7 @@ import structlog
 
 from backend.routers import assets, predictions, alerts, explanations, health
 from backend.routers import copilot
+from agents.orchestrator import router as agents_router
 from backend.ws.risk_stream import router as ws_router
 
 log = structlog.get_logger()
@@ -53,6 +54,7 @@ app.include_router(predictions.router)
 app.include_router(alerts.router)
 app.include_router(explanations.router)
 app.include_router(copilot.router)     # â† V2: AI Copilot
+app.include_router(agents_router)      # V3: Autonomous agent pipeline
 app.include_router(ws_router)
 
 
@@ -67,6 +69,7 @@ async def startup():
     print("Cyber-Battery Platform API v2.0 started")
     print("   API docs  -> http://localhost:8000/docs")
     print("   Copilot   -> POST /copilot/chat")
+    print("   Agents    -> POST /agents/run-alert/{alert_id}")
     print("   Status    -> GET  /copilot/status")
 
 
